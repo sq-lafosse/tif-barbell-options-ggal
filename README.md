@@ -6,8 +6,7 @@
 **Backtest empírico de la Estrategia Barbell sobre opciones de GGAL (2015–2026)**
 
 Trabajo de Investigación Final — Licenciatura en Finanzas, UADE
-Autores: Santiago Quintero (LU 1176122) · Matías Malo Medrano (LU 1147831)
-Tutor: Mauro Natalucci
+Autores: Santiago Quintero y Matías Malo Medrano
 
 > La estrategia evalúa si una cartera bimodal (≈90% en T-Bills + ≈10% en opciones OTM de GGAL)
 > mitiga el riesgo de cola izquierda del equity argentino, dominado por azar salvaje y eventos
