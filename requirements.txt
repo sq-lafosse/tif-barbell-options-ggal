@@ -1,0 +1,27 @@
+# Dependencias del proyecto — TIF Barbell Options GGAL
+# Python >= 3.11
+#
+# Instalar con:  pip install -r requirements.txt
+# Actualizar con:  pip freeze > requirements.txt  (solo en el entorno del proyecto)
+
+# --- Manipulación y análisis de datos ---
+pandas>=2.0.0
+numpy>=1.24.0
+scipy>=1.10.0          # optimización para volatilidad implícita por strike
+
+# --- Visualización ---
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# --- Fuentes de datos de mercado ---
+yfinance>=0.2.30               # ADR GGAL (NYSE) y Merval
+pandas-datareader>=0.10.0      # T-Bills 3M desde FRED
+
+# --- Configuración ---
+pyyaml>=6.0                    # lectura de config.yaml
+
+# --- Testing ---
+pytest>=7.4.0
+
+# --- Notebooks ---
+jupyter>=1.0.0

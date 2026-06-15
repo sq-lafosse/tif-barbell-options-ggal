@@ -216,3 +216,24 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# =============================================================
+# Reglas específicas del proyecto tif-barbell-options-ggal
+# =============================================================
+
+# Datos: los CSV son pesados y algunos son privados — no se versionan
+data/raw/**/*.csv
+
+# Outputs procesados — se regeneran corriendo el pipeline
+data/processed/
+
+# Archivos Parquet (outputs intermedios)
+*.parquet
+
+# Variables de entorno (claves API, credenciales FRED, etc.)
+.env
+.env.*
+!.env.example
+
+# VS Code (cada colaborador usa su propia configuración local)
+.vscode/

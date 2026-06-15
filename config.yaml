@@ -1,0 +1,97 @@
+# =============================================================================
+# PARÁMETROS DE LA ESTRATEGIA BARBELL — TIF Finanzas UADE 2025-2026
+# Autores: Santiago Quintero (LU 1176122) · Matías Malo Medrano (LU 1147831)
+# Tutor: Mauro Natalucci
+#
+# Este archivo centraliza TODOS los parámetros económicos del backtest.
+# No hardcodear ningún valor numérico en el código fuente — siempre leer desde aquí.
+# Editar con cuidado: cada cambio afecta los resultados del backtest completo.
+# =============================================================================
+
+
+# --- PESOS DE LA CARTERA BIMODAL ---
+# Distribución del capital entre el polo seguro y el polo agresivo.
+# Arquitectura bimodal à la Taleb: evitar el "medio frágil".
+# ⚠ TENTATIVO — a calibrar y sensibilizar en el capítulo de resultados.
+portfolio:
+  safe_weight: 0.90        # TENTATIVO: polo seguro en T-Bills 3M
+  aggressive_weight: 0.10  # TENTATIVO: polo agresivo en opciones OTM de GGAL
+
+
+# --- MONEYNESS: SELECCIÓN DEL STRIKE OTM ---
+# Usamos distancia porcentual fija al spot (Decisión metodológica #8 — tutor Natalucci).
+# Ventaja: observable directo, no depende de Black-Scholes ni de VI implícita.
+# ⚠ PLACEHOLDER — definir el % definitivo con el tutor antes de correr el backtest.
+moneyness:
+  otm_pct: 0.15   # PLACEHOLDER: strike OTM = spot × (1 + otm_pct) para CALL
+                  #                           = spot × (1 − otm_pct) para PUT
+
+
+# --- COSTOS DE TRANSACCIÓN ---
+# Modelado por liquidez (Decisión metodológica #10 — tutor Natalucci).
+# Si la planilla incluye bid/ask explícito, usarlo directamente en lugar del proxy.
+# Si no hay bid/ask, clasificar por volumen operado y aplicar el spread correspondiente.
+transaction_costs:
+  high_volume_spread: 0.015   # spread 1-2%: strikes con volumen alto (mercado líquido)
+  low_volume_spread: 0.09     # spread 8-10%: strikes con volumen bajo (mercado ilíquido)
+  volume_threshold: 1000.0    # umbral en ARS nominales para clasificar liquidez
+
+
+# --- PATHS DE DATOS ---
+# Rutas relativas desde la raíz del repositorio.
+# Los archivos CSV no se versionar en Git — ver data/README.md para poblarlos.
+data:
+  raw_options_dir: data/raw/options/     # planillas Opex en CSV (formato argentino)
+  raw_adr_dir:     data/raw/adr/         # histórico ADR GGAL en USD
+  raw_merval_dir:  data/raw/merval/      # histórico Merval en ARS
+  raw_ccl_dir:     data/raw/ccl/         # tipo de cambio CCL histórico
+  raw_tbills_dir:  data/raw/tbills/      # T-Bills 3M desde FRED
+  processed_dir:   data/processed/       # outputs de data_loader en formato tidy (.parquet)
+
+
+# --- ARCHIVOS OPEX ESPERADOS ---
+# Planillas CSV por vencimiento, en meses pares, desde octubre 2023.
+# Agregar nuevas entradas a medida que se sumen planillas al repositorio.
+expected_opex_files:
+  - GGAL_OPEX_2023-10.csv
+  - GGAL_OPEX_2023-12.csv
+  - GGAL_OPEX_2024-02.csv
+  - GGAL_OPEX_2024-04.csv
+  - GGAL_OPEX_2024-06.csv
+  - GGAL_OPEX_2024-08.csv
+  - GGAL_OPEX_2024-10.csv
+  - GGAL_OPEX_2024-12.csv
+  - GGAL_OPEX_2025-02.csv
+  - GGAL_OPEX_2025-04.csv
+  - GGAL_OPEX_2025-06.csv
+  - GGAL_OPEX_2025-08.csv
+  - GGAL_OPEX_2025-10.csv
+  - GGAL_OPEX_2025-12.csv
+  - GGAL_OPEX_2026-02.csv
+  - GGAL_OPEX_2026-04.csv
+
+
+# --- BENCHMARKS ---
+# Dos referencias de desempeño (Decisión metodológica #11 — tutor Natalucci):
+#   · ADR GGAL: mide el efecto activo de la estrategia vs el subyacente
+#   · Merval en USD: mide el efecto de mercado vs el equity argentino completo
+benchmarks:
+  adr:
+    ticker: "GGAL"            # Yahoo Finance — ADR GGAL en NYSE
+    name: "GGAL ADR buy-and-hold"
+    currency: "USD"
+  merval:
+    ticker: "M.BA"            # Yahoo Finance — Merval en ARS (convertir a USD vía CCL)
+    name: "Merval en USD"
+    currency: "ARS"           # la conversión a USD se hace en fx.py
+
+
+# --- FECHAS DEL BACKTEST ---
+# Rango temporal completo del estudio (2015-2025 histórico + 2026 prospectivo).
+# Nota: opciones reales disponibles desde oct 2023.
+#       Para 2015-2022 se usará una fuente externa o sintéticos (pendiente — ver CLAUDE.md §5.3).
+backtest:
+  start_date: "2015-01-01"
+  end_date:   "2026-12-31"
+  rebalance_frequency: "monthly"   # rebalanceo en cada vencimiento Opex (meses pares)
+  currency: "USD"                  # todos los resultados se reportan en USD
