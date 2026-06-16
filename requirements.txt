@@ -14,8 +14,7 @@ matplotlib>=3.7.0
 seaborn>=0.12.0
 
 # --- Fuentes de datos de mercado ---
-yfinance>=0.2.30               # ADR GGAL (NYSE) y Merval
-pandas-datareader>=0.10.0      # T-Bills 3M desde FRED
+yfinance>=0.2.30               # ADR GGAL (NYSE), Merval y T-Bills 3M (^IRX)
 
 # --- Configuración ---
 pyyaml>=6.0                    # lectura de config.yaml
