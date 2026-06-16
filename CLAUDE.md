@@ -116,31 +116,39 @@ Las 20 columnas de A + **DELTA, GAMMA, VEGA, THETA** (griegas pre-calculadas por
 - **Fuente recomendada:** FRED (`DGS3MO` o `DTB3`), gratis vía API
 - **Uso:** polo seguro del Barbell + tasa libre de riesgo para griegas (cross-check vs la columna `TLR` de las planillas)
 
-### 5.5 El problema de las opciones OTM históricas 2015–2023 (CRÍTICO)
+### 5.5 Opciones OTM históricas 2019–octubre 2023: reconstrucción sintética
 
-Los archivos Historial empiezan en oct 2023. La tesis abarca 2015–2025. **Faltan opciones para 2015–2023**.
+**Decisión cerrada:** El backtest cubre el periodo **2019 → junio 2026**. Se divide en dos tramos según fuente de datos:
 
-**Decisión del usuario:** investigar fuentes pagas/gratuitas antes de generar sintéticos. Estado actual del análisis:
+| Tramo | Periodo | Fuente de opciones | Tipo de dato |
+|---|---|---|---|
+| **Sintético** | 2019-01-01 → 2023-10-17 | Reconstrucción con Black-Scholes calibrado al skew real | Generado |
+| **Real** | 2023-10-18 → 2026-06-12 | Archivos Historial (17 CSV) | Observado |
 
-**Opciones reales del ADR de GGAL (NYSE) 2015–2026:**
-- **OptionMetrics IvyDB US** — gold standard académico, contiene GGAL desde 1996. Acceso vía Wharton Research Data Services (WRDS). UADE **no parece tener convenio con WRDS** (verificar con biblioteca/dirección de carrera). Sin convenio: producto institucional, miles de USD.
-- **ORATS** — datos EOD desde 2007, calidad alta, planes pagos.
-- **CBOE DataShop** — opciones EOD desde 2010+, paga.
-- **Databento** — pay-per-use con $125 USD de crédito inicial gratis; puede alcanzar para descargar GGAL OTM histórico si se filtra bien.
-- **Yahoo Finance / Webull / Investing** — opciones **actuales únicamente**, no histórico profundo.
+**Justificación del recorte 2015→2019:**
+- 2019 incluye el evento PASO (agosto 2019) — el shock político más relevante del periodo y caso paradigmático de cola izquierda para la tesis.
+- Reduce el horizonte sintético de 8 años a ~5 años, limitando el error metodológico acumulado.
+- Mantiene cobertura de los principales regímenes argentinos (Macri tardío, Fernández, Milei).
 
-**Opciones locales de GGAL en BYMA 2015–2023:**
-- No hay fuente pública con histórico granular. Los archivos Historial (desde oct 2023) son justamente lo que falta hacia atrás.
-- BYMA publica boletines diarios en PDF, pero parsearlos para todo el periodo sería un proyecto en sí mismo.
+**Metodología de reconstrucción sintética (2019 → oct 2023):**
 
-**Caminos posibles (a discutir con el tutor antes de codear):**
+1. **Spot histórico**: precio del ADR de GGAL (NYSE) convertido a ARS vía CCL diario.
+2. **Tasa libre de riesgo**: T-Bills 3M (FRED), alineados por fecha.
+3. **Volatilidad implícita por strike**: calibrar la **superficie de skew** (función `VI = f(moneyness, días_vto)`) usando los archivos Historial reales del tramo 2023-10 → 2026-06, y proyectarla hacia atrás. Esto preserva la asimetría de la sonrisa (crashophobia) en lugar de asumir VI plana.
+4. **Pricing**: Black-Scholes europeo estándar con los inputs anteriores.
+5. **Grilla de strikes**: replicar la lógica observada en los archivos reales — strikes OTM a 10%, 15%, 20% de distancia del spot, vencimientos mensuales pares (febrero, abril, junio, agosto, octubre, diciembre).
+6. **Output**: mismo formato tidy que los archivos reales, con campo `esquema = "SIN"` para trazabilidad.
 
-1. **Pedir acceso a WRDS por UADE** (la Lic. en Finanzas está afiliada a CFA Institute — chequear si hay convenio académico de datos).
-2. **Probar Databento con los $125 USD gratis** para descargar opciones del ADR GGAL filtradas a OTM puts/calls a una distancia fija de moneyness. Si alcanza, este es el dataset óptimo.
-3. **Generar precios sintéticos con Black-Scholes calibrado al skew observado en 2023–2025.** Riesgo metodológico serio: si la VI usada para sintetizar es la histórica realizada (HV), se subestiman las primas de los puts OTM y **se invalida la propia tesis** (que afirma que esos puts están sobreprecio por crashophobia, no subpreciados). Solución parcial: calibrar la skew a la observada en los archivos reales y aplicarla hacia atrás, pero **se vuelve circular**.
-4. **Reducir el backtest a 2023–2026 con datos reales** y mantener 2015–2025 como análisis narrativo del subyacente (drawdowns del ADR, eventos políticos). **El usuario rechazó esta opción**: quiere backtest completo 2015–2025.
+**Limitación reconocida y a documentar en la tesis:**
+La calibración del skew se hace sobre 2023-2026 y se proyecta a 2019-2023, asumiendo que la **forma** de la sonrisa es estable aunque el nivel cambie. Es un supuesto fuerte; si en 2019 la crashophobia tenía una estructura distinta, los puts OTM sintéticos estarán mal precieados. Esta limitación debe quedar explícita en el capítulo metodológico.
 
-**Recomendación para discusión:** intentar Databento primero (camino 2). Si no alcanza el crédito, calibrar sintéticos con la skew de 2023–2025 y dejar explícito en el capítulo metodológico el supuesto y sus limitaciones (camino 3). Mantener 2023–2026 con datos reales como **validación out-of-sample** del modelo sintético — eso es defendible académicamente y le da rigor.
+**Validación out-of-sample:**
+Los archivos reales 2023-10 → 2026-06 sirven como **conjunto de validación**: la metodología de reconstrucción se desarrolla con datos previos a una fecha de corte (ej. 2024-12), y se valida contra los datos reales posteriores. Si la Barbell funciona consistentemente en ambos tramos (sintético y real), el resultado es defendible.
+
+**Implementación:**
+- Script: `scripts/generate_synthetic_options.py`
+- Depende de: ADR descargado, CCL calculado, T-Bills descargados, archivos Historial parseados (para calibrar skew)
+- Es la **última etapa** del pipeline de datos — los otros 3 datasets (ADR, Merval, T-Bills) son inputs para este
 
 ### 5.6 Información del formato Opex (legacy, descartado)
 
@@ -291,6 +299,7 @@ Mantener `requirements.txt` versionado.
 - **Tests:** cada función no trivial tiene su test en `tests/`
 - **Idioma:** comentarios y docstrings en español (consistente con la tesis); nombres de variables y funciones en inglés (estándar de la comunidad)
 - **Datos crudos:** intocables. Cualquier transformación deja el original sin modificar y produce un nuevo artefacto.
+- **Mensajes de commit:** semantic commits (feat/fix/docs/chore/refactor) con scope opcional. No incluir footer `Co-Authored-By: Claude` — la coautoría con IA se reconoce a nivel de proyecto, no por commit. Los mensajes deben ser limpios y enfocados al cambio técnico.
 
 ---
 
