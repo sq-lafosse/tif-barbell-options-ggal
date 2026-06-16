@@ -17,6 +17,8 @@
 
 **Objetivo del código:** Implementar un backtest empírico de la Estrategia Barbell sobre opciones de GGAL, midiendo desempeño en USD, contra dos benchmarks (ADR GGAL buy-and-hold y Merval en USD).
 
+**Visión a largo plazo:** Este repositorio se diseña también como **base reutilizable** para futuras estrategias de opciones sobre activos argentinos. Por eso los datos crudos se mantienen intactos y la arquitectura es modular.
+
 ---
 
 ## 2. División de trabajo
@@ -58,29 +60,51 @@ La tesis sostiene que en el mercado argentino, dominado por *azar salvaje* (Mand
 
 ## 5. Universo de datos
 
-### 5.1 Datos que ya tenemos
+### 5.1 Fuente principal: archivos Historial de opciones GGAL
 
-**Opciones locales de GGAL** — planillas CSV por vencimiento (Opex), meses pares desde octubre 2023:
+Los datos crudos son **17 archivos CSV** llamados `Historial`, uno por ciclo Opex (vencimiento) de opciones de GGAL desde octubre 2023 hasta junio 2026. Cobertura: **18/08/2023 → 12/06/2026, sin gaps temporales** (cada archivo cubre el ciclo del Opex anterior + ruedas iniciales del siguiente).
 
-- 2023: oct, dic
-- 2024: feb, abr, jun, ago, oct, dic
-- 2025: feb, abr, jun, ago, oct, dic
-- 2026: feb, abr (en adelante, según se agreguen)
+**Formato del archivo Historial:**
+- Separador: `;` (punto y coma)
+- Encoding: UTF-8 con BOM
+- Decimales: formato argentino (coma)
+- Estructura: **una fila por contrato por fecha** (formato ya casi tidy — no es wide)
+- Cada fila identifica explícitamente `ESPECIE`, `BASE` (strike), `TIPO` (Call/Put). No hay ambigüedad de columnas.
 
-**Estructura de cada planilla:**
-- 19 columnas de metadata (fecha, GGAL local en ARS, CCL, ADR USD, días al vencimiento, TLR, volúmenes calls/puts, VI promedio calls/puts, ADR%)
-- Matriz de strikes a partir de columna 20: cada strike ocupa **2 columnas** (CALL / PUT)
-- Decimales en formato argentino (coma)
-- El encabezado de strikes **puede cambiar dentro del mismo archivo** cuando cambia la grilla cotizada — el parser debe re-detectar encabezados
+**Convención de nombres en el repo:** `GGAL_HIST_YYYY-MM.csv` (17 archivos esperados).
 
-**Punto crítico a auditar:** En la planilla de octubre 2023, la columna del PUT se comporta como prima correctamente (crece monótonamente con strike). La columna del CALL tiene valores inconsistentes en muchos strikes — posiblemente mezcla prima con volumen/nominal operado, y la paridad put-call no cierra. **Resolver esto en `data_audit.py` antes de simular.**
+### 5.2 Dos esquemas de columnas dentro del Historial
 
-### 5.2 Datos que faltan traer
+La fuente cambió el formato en **junio 2025**. Hay dos esquemas a manejar:
+
+#### Esquema A (viejo) — 20 columnas — Archivos 2023-10 a 2025-04 (10 archivos)
+```
+FECHA, ESPECIE, BASE, TIPO, ÚLTIMO, %, MONTO, HORA, APE., MAX., MIN.,
+C. ANT., NOMINAL, PRECIO GGAL, VAR. % GGAL, TLR, VI %, VE %,
+DÍAS AL VTO., PLAZO (años)
+```
+
+#### Esquema B (nuevo) — 24 columnas — Archivos 2025-06 a 2026-06 (7 archivos)
+Las 20 columnas de A + **DELTA, GAMMA, VEGA, THETA** (griegas pre-calculadas por la fuente).
+
+**Implicancia:** los archivos del esquema A no traen griegas. La VI sí está en los 17.
+
+### 5.3 Decisión sobre griegas
+
+**Política adoptada:** Recalcular DELTA, GAMMA, VEGA, THETA **únicamente** para los 10 archivos del esquema A, usando `greeks.py` con la `VI %` del propio archivo como input. Para los 7 archivos del esquema B, **confiamos en las griegas tal como vienen** (la fuente las publica).
+
+**Protocolo de calibración** (importante para Matías cuando programe `greeks.py`):
+1. Implementar Black-Scholes estándar (con la convención que use la fuente — probablemente call/put europea, spot del subyacente local en ARS, TLR del archivo, días al vto del archivo).
+2. **Validación cruzada:** correr `greeks.py` sobre los archivos del **esquema B** y comparar columna por columna contra DELTA/GAMMA/VEGA/THETA del archivo. Si coinciden con tolerancia razonable (ej. < 1% de error relativo), la implementación está calibrada con la fuente.
+3. Una vez calibrado, aplicar `greeks.py` a los archivos del esquema A para llenar las 4 columnas faltantes.
+4. Resultado: dataset final homogéneo con griegas consistentes en los 17 archivos.
+
+### 5.4 Otros datos necesarios (a descargar después)
 
 #### a) ADR de GGAL (NYSE) — diario 2015–2026
 - **Fuente recomendada:** Yahoo Finance (`yfinance`, ticker `GGAL`)
 - **Frecuencia:** diaria
-- **Uso:** benchmark idiosincrático + cross-check de la columna ADR de las planillas + insumo para spot histórico de opciones sintéticas (si se decide ese camino)
+- **Uso:** benchmark idiosincrático + cross-check de la columna `PRECIO GGAL` de las planillas (las planillas tienen GGAL local en ARS; el ADR es la referencia en USD) + spot histórico para opciones sintéticas si se decide ese camino
 
 #### b) Merval en pesos → convertido a USD CCL — diario 2015–2026
 - **Fuente recomendada:** BYMA histórico o Investing.com (ticker `M.BA` en Yahoo Finance también funciona pero a veces tiene gaps)
@@ -92,7 +116,9 @@ La tesis sostiene que en el mercado argentino, dominado por *azar salvaje* (Mand
 - **Fuente recomendada:** FRED (`DGS3MO` o `DTB3`), gratis vía API
 - **Uso:** polo seguro del Barbell + tasa libre de riesgo para griegas (cross-check vs la columna `TLR` de las planillas)
 
-### 5.3 El problema de las opciones OTM históricas 2015–2023 (CRÍTICO)
+### 5.5 El problema de las opciones OTM históricas 2015–2023 (CRÍTICO)
+
+Los archivos Historial empiezan en oct 2023. La tesis abarca 2015–2025. **Faltan opciones para 2015–2023**.
 
 **Decisión del usuario:** investigar fuentes pagas/gratuitas antes de generar sintéticos. Estado actual del análisis:
 
@@ -104,17 +130,28 @@ La tesis sostiene que en el mercado argentino, dominado por *azar salvaje* (Mand
 - **Yahoo Finance / Webull / Investing** — opciones **actuales únicamente**, no histórico profundo.
 
 **Opciones locales de GGAL en BYMA 2015–2023:**
-- No hay fuente pública con histórico granular. Las planillas del usuario (desde oct 2023) son justamente lo que falta hacia atrás.
+- No hay fuente pública con histórico granular. Los archivos Historial (desde oct 2023) son justamente lo que falta hacia atrás.
 - BYMA publica boletines diarios en PDF, pero parsearlos para todo el periodo sería un proyecto en sí mismo.
 
 **Caminos posibles (a discutir con el tutor antes de codear):**
 
 1. **Pedir acceso a WRDS por UADE** (la Lic. en Finanzas está afiliada a CFA Institute — chequear si hay convenio académico de datos).
 2. **Probar Databento con los $125 USD gratis** para descargar opciones del ADR GGAL filtradas a OTM puts/calls a una distancia fija de moneyness. Si alcanza, este es el dataset óptimo.
-3. **Generar precios sintéticos con Black-Scholes calibrado al skew observado en 2023–2025.** Riesgo metodológico serio: si la VI usada para sintetizar es la histórica realizada (HV), se subestiman las primas de los puts OTM y **se invalida la propia tesis** (que afirma que esos puts están sobreprecio por crashophobia, no subpreciados). Solución parcial: calibrar la skew a la observada en las planillas reales y aplicarla hacia atrás, pero **se vuelve circular**.
+3. **Generar precios sintéticos con Black-Scholes calibrado al skew observado en 2023–2025.** Riesgo metodológico serio: si la VI usada para sintetizar es la histórica realizada (HV), se subestiman las primas de los puts OTM y **se invalida la propia tesis** (que afirma que esos puts están sobreprecio por crashophobia, no subpreciados). Solución parcial: calibrar la skew a la observada en los archivos reales y aplicarla hacia atrás, pero **se vuelve circular**.
 4. **Reducir el backtest a 2023–2026 con datos reales** y mantener 2015–2025 como análisis narrativo del subyacente (drawdowns del ADR, eventos políticos). **El usuario rechazó esta opción**: quiere backtest completo 2015–2025.
 
-**Mi recomendación para discusión:** intentar Databento primero (camino 2). Si no alcanza el crédito, calibrar sintéticos con la skew de 2023–2025 y dejar explícito en el capítulo metodológico el supuesto y sus limitaciones (camino 3). Mantener 2023–2026 con datos reales como **validación out-of-sample** del modelo sintético — eso es defendible académicamente y le da rigor.
+**Recomendación para discusión:** intentar Databento primero (camino 2). Si no alcanza el crédito, calibrar sintéticos con la skew de 2023–2025 y dejar explícito en el capítulo metodológico el supuesto y sus limitaciones (camino 3). Mantener 2023–2026 con datos reales como **validación out-of-sample** del modelo sintético — eso es defendible académicamente y le da rigor.
+
+### 5.6 Información del formato Opex (legacy, descartado)
+
+> **Nota contextual:** además del Historial, la fuente también publica una pestaña llamada Opex con el mismo periodo. Ese formato fue evaluado y **descartado** porque el Historial es estructuralmente superior (formato tidy, tipo explícito, sin ambigüedad). Se documenta aquí para futuras estrategias que puedan querer evaluar esa fuente.
+
+El formato Opex es **wide**:
+- 19 columnas de metadata (similares a las del Historial)
+- Matriz de strikes a partir de la columna 20: cada strike ocupa **2 columnas** (CALL / PUT)
+- El encabezado de strikes puede cambiar dentro del mismo archivo cuando cambia la grilla cotizada
+- Problema detectado: en la planilla de octubre 2023, la columna del PUT se comporta como prima correctamente (crece monótonamente con strike), pero la columna del CALL tiene valores inconsistentes en muchos strikes — posiblemente mezcla prima con volumen/nominal operado, y la paridad put-call no cierra
+- **Decisión:** no usar Opex en este proyecto. Si una estrategia futura lo necesita, primero hay que resolver ese bloqueante con la fuente original
 
 ---
 
@@ -130,11 +167,8 @@ tif-barbell-options-ggal/
 ├── .gitignore
 │
 ├── data/
-│   ├── raw/                        ← CSVs originales sin tocar
-│   │   ├── options/                ← planillas de opciones GGAL por Opex
-│   │   │   ├── GGAL_OPEX_2023-10.csv
-│   │   │   ├── GGAL_OPEX_2023-12.csv
-│   │   │   └── ...
+│   ├── raw/                        ← CSVs originales sin tocar (intactos)
+│   │   ├── options/                ← archivos Historial GGAL_HIST_YYYY-MM.csv
 │   │   ├── adr/                    ← histórico diario ADR GGAL
 │   │   ├── merval/                 ← histórico Merval en ARS
 │   │   ├── ccl/                    ← histórico CCL
@@ -148,8 +182,8 @@ tif-barbell-options-ggal/
 │
 ├── src/
 │   ├── __init__.py
-│   ├── data_loader.py              ← parsea planillas wide → formato tidy
-│   ├── data_audit.py               ← validaciones: paridad put-call, monotonía, VI
+│   ├── data_loader.py              ← lee los 17 Historial → formato tidy unificado
+│   ├── data_audit.py               ← validaciones: paridad, monotonía, esquemas
 │   ├── fx.py                       ← conversión ARS↔USD vía CCL
 │   ├── greeks.py                   ← Black-Scholes, griegas, VI por strike
 │   ├── strategy.py                 ← lógica de la Barbell
@@ -164,7 +198,7 @@ tif-barbell-options-ggal/
 │   └── download_options_historical.py  ← TBD: Databento / WRDS / sintético
 │
 ├── notebooks/
-│   ├── 01_audit_datos.ipynb        ← exploración inicial de la planilla oct 2023
+│   ├── 01_audit_datos.ipynb        ← exploración inicial de los 17 archivos
 │   ├── 02_explore_skew.ipynb       ← análisis del skew/sonrisa de VI
 │   └── 03_validate_barbell.ipynb   ← validación de la estrategia
 │
@@ -187,30 +221,41 @@ tif-barbell-options-ggal/
 
 ## 7. Formato tidy (contrato entre módulos)
 
-`data_loader.py` debe producir un DataFrame con este esquema. Todo lo demás consume esto, sin importar las rarezas del CSV original:
+`data_loader.py` debe producir un DataFrame con este esquema. Todo lo demás consume esto:
 
 ```
-columna           | tipo         | descripción
-------------------|--------------|----------------------------------------
-fecha             | datetime     | fecha de rueda
-opex              | str          | identificador de la serie (ej. "2023-10")
-tipo              | category     | "CALL" o "PUT"
-strike            | float        | precio de ejercicio (ARS)
-prima             | float        | precio de cierre de la opción (ARS)
-volumen           | float        | volumen nominal operado
-vi_implicita      | float        | VI estimada (NaN si data_loader no la calcula)
-dias_vto          | int          | días hasta vencimiento
-ggal_local        | float        | spot GGAL en ARS
-adr_usd           | float        | precio del ADR en USD
-ccl               | float        | CCL del día
-tlr               | float        | tasa libre de riesgo de la planilla
+columna           | tipo         | descripción / origen
+------------------|--------------|----------------------------------------------------
+fecha             | datetime     | FECHA del archivo, parseada de dd/mm/yyyy
+opex              | str          | identificador de la serie (ej. "2025-10"), derivado del nombre del archivo
+especie           | str          | ESPECIE del archivo (ej. "GFGC38785O")
+tipo              | category     | TIPO del archivo, "Call" o "Put"
+strike            | float        | BASE del archivo (ARS)
+prima             | float        | ÚLTIMO del archivo (precio de cierre de la opción, ARS)
+monto             | float        | MONTO del archivo (ARS operados)
+nominal           | int          | NOMINAL del archivo (contratos operados)
+ggal_local        | float        | PRECIO GGAL del archivo (ARS)
+var_ggal          | float        | VAR. % GGAL del archivo (decimal, no %)
+tlr               | float        | TLR del archivo (decimal anualizado)
+vi_implicita      | float        | VI % del archivo (decimal)
+valor_extrinseco  | float        | VE % del archivo (decimal)
+dias_vto          | int          | DÍAS AL VTO. del archivo
+plazo_anios       | float        | PLAZO (años) del archivo
+delta             | float        | DELTA del archivo si existe (esquema B); NaN si esquema A → llenar con greeks.py
+gamma             | float        | GAMMA del archivo si existe (esquema B); NaN si esquema A → llenar con greeks.py
+vega              | float        | VEGA del archivo si existe (esquema B); NaN si esquema A → llenar con greeks.py
+theta             | float        | THETA del archivo si existe (esquema B); NaN si esquema A → llenar con greeks.py
+esquema           | category     | "A" o "B" — para trazabilidad metodológica
+fuente_archivo    | str          | nombre del archivo original (ej. "GGAL_HIST_2025-10.csv")
 ```
 
-**Reglas:**
-- Una fila por (fecha, opex, strike, tipo) con cotización válida ese día.
-- `0,000` → `NaN` (strike sin cotización).
-- Decimales argentinos (`"1.234,56"`) → float (`1234.56`).
+**Reglas críticas:**
+- **Los CSV crudos en `data/raw/` no se tocan jamás.** El parser lee, transforma en memoria, y escribe a `data/processed/`.
+- `0,000` y string vacío en numéricos → `NaN`.
+- Decimales argentinos (`"1.234,56"`, `"40,03%"`) → float (`1234.56`, `0.4003`).
+- Porcentajes (TLR, VI %, VE %, VAR. % GGAL) se convierten a decimales (dividir por 100).
 - Conversión a USD se hace en `fx.py`, **no** en `data_loader.py` (separation of concerns).
+- El campo `esquema` permite filtrar después por origen de las griegas — útil para análisis metodológico.
 
 ---
 
@@ -227,6 +272,7 @@ seaborn
 yfinance         # ADR, Merval
 pandas-datareader # FRED T-Bills
 pyyaml           # config
+pyarrow          # parquet
 pytest           # testing
 jupyter          # notebooks
 ```
@@ -244,6 +290,7 @@ Mantener `requirements.txt` versionado.
 - **Configuración:** todo parámetro económico vive en `config.yaml`, **no hardcodear**
 - **Tests:** cada función no trivial tiene su test en `tests/`
 - **Idioma:** comentarios y docstrings en español (consistente con la tesis); nombres de variables y funciones en inglés (estándar de la comunidad)
+- **Datos crudos:** intocables. Cualquier transformación deja el original sin modificar y produce un nuevo artefacto.
 
 ---
 
@@ -253,12 +300,16 @@ Mantener `requirements.txt` versionado.
 - [x] Marco teórico de la tesis (2da entrega 40%, aprobada)
 - [x] Decisiones metodológicas cerradas con el tutor
 - [x] Repo en GitHub creado y clonado localmente
+- [x] Esqueleto del repo (carpetas, config.yaml, README.md, requirements.txt, main.py)
 - [x] Documento preliminar de diseño del backtest
+- [x] Auditoría completa de los 17 archivos Historial — cobertura continua 2023-08 a 2026-06
+- [x] Detección de dos esquemas (A: 20 cols sin griegas; B: 24 cols con griegas)
+- [x] Decisión sobre griegas: recalcular las del esquema A con `greeks.py` calibrado contra B
 
 ### En curso (Santiago — datos)
-- [ ] Estructura de carpetas `data/raw/`, `data/processed/`, `data/external/`
-- [ ] `data_loader.py` — parser de planillas wide → tidy
-- [ ] `data_audit.py` — resolver el bloqueante de la columna CALL (prima vs volumen)
+- [ ] Subir los 17 archivos `GGAL_HIST_YYYY-MM.csv` a `data/raw/options/` (local, no al repo)
+- [ ] `data_loader.py` — parser unificado de ambos esquemas → tidy
+- [ ] `data_audit.py` — validaciones de esquema, paridad, consistencia
 - [ ] `scripts/download_adr.py` — bajar ADR GGAL 2015–2026 (Yahoo)
 - [ ] `scripts/download_tbills.py` — bajar T-Bills 3M 2015–2026 (FRED)
 - [ ] `scripts/download_merval.py` — bajar Merval 2015–2026 + conversión a USD CCL
@@ -268,7 +319,8 @@ Mantener `requirements.txt` versionado.
 - [ ] Resolver fuente de opciones históricas 2015–2023 (Databento vs sintético vs reducir backtest)
 
 ### Bloqueado (Matías — estrategia)
-- Empieza cuando Santiago entregue `data_loader.py` + `fx.py` funcionando sobre al menos una planilla.
+- Empieza cuando Santiago entregue `data_loader.py` + `fx.py` funcionando sobre los 17 archivos.
+- Primera tarea: `greeks.py` calibrado contra esquema B (ver protocolo en sección 5.3).
 
 ---
 
