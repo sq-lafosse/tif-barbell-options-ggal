@@ -76,11 +76,18 @@ def download_adr(start: str, end: str) -> pd.DataFrame:
         fecha, open, high, low, close, adj_close, volume.
 
     Raises:
-        ValueError: si Yahoo Finance no devuelve datos para el ticker/rango pedido
-            (ticker inexistente, sin conexión, rango sin ruedas, etc.).
+        ValueError: si la descarga falla (timeout, sin conexión) o si Yahoo
+            Finance no devuelve datos para el ticker/rango pedido.
     """
     logger.info("Descargando %s desde Yahoo Finance: %s → %s", TICKER, start, end)
-    raw = yf.download(TICKER, start=start, end=end, auto_adjust=False, progress=False)
+
+    try:
+        raw = yf.download(TICKER, start=start, end=end, auto_adjust=False, progress=False)
+    except Exception as exc:
+        raise ValueError(
+            f"Error al descargar el ticker '{TICKER}' desde Yahoo Finance: {exc}. "
+            "Verificar conexión a internet."
+        ) from exc
 
     if raw.empty:
         raise ValueError(
