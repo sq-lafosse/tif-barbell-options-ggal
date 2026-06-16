@@ -20,6 +20,9 @@ pandas-datareader>=0.10.0      # T-Bills 3M desde FRED
 # --- Configuración ---
 pyyaml>=6.0                    # lectura de config.yaml
 
+# --- Formatos de archivo ---
+pyarrow>=14.0.0                 # lectura/escritura de Parquet (pandas.to_parquet)
+
 # --- Testing ---
 pytest>=7.4.0
 
