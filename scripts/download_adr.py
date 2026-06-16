@@ -6,7 +6,7 @@ Rol en el proyecto (ver CLAUDE.md §5.4a): benchmark idiosincrático del backtes
 
 Uso:
     python scripts/download_adr.py
-    python scripts/download_adr.py --start 2019-01-01 --end 2026-06-16
+    python scripts/download_adr.py --start 2015-01-01 --end 2026-06-16
     python scripts/download_adr.py --force
     python scripts/download_adr.py --output data/raw/adr/otro_nombre.parquet
 """
@@ -23,7 +23,7 @@ import yfinance as yf
 logger = logging.getLogger(__name__)
 
 TICKER = "GGAL"
-DEFAULT_START = "2019-01-01"
+DEFAULT_START = "2015-01-01"
 DEFAULT_OUTPUT_PATH = Path("data/raw/adr/GGAL_ADR_daily.parquet")
 
 # Columnas finales del Parquet, en el orden en que se guardan.
