@@ -5,8 +5,8 @@
 
 **Backtest empírico de la Estrategia Barbell sobre opciones de GGAL (2015–2026)**
 
-Trabajo de Investigación Final — Licenciatura en Finanzas, UADE
-Autores: Santiago Quintero y Matías Malo Medrano
+Trabajo de Investigación Final — Licenciatura en Finanzas
+Autores: Estudiante 1 y Estudiante 2
 
 > La estrategia evalúa si una cartera bimodal (≈90% en T-Bills + ≈10% en opciones OTM de GGAL)
 > mitiga el riesgo de cola izquierda del equity argentino, dominado por azar salvaje y eventos
@@ -135,16 +135,16 @@ Ver [CLAUDE.md — Sección 10: Estado actual y próximos pasos](CLAUDE.md#10-es
 **Resumen:**
 - ✅ Marco teórico y decisiones metodológicas cerradas con el tutor
 - ✅ Estructura del repositorio
-- 🔄 En curso: capa de datos (Santiago)
-- ⏳ Bloqueado hasta tener `data_loader.py`: lógica de la estrategia (Matías)
+- 🔄 En curso: capa de datos (Estudiante 1)
+- ⏳ Bloqueado hasta tener `data_loader.py`: lógica de la estrategia (Estudiante 2)
 - ❓ Pendiente: resolución de la fuente de opciones históricas 2015–2023
 
 ---
 
 ## Equipo
 
-| Nombre | LU | Responsabilidad |
-|---|---|---|
-| Santiago Quintero | 1176122 | Capa de datos: `data_loader.py`, `data_audit.py`, `fx.py`, scripts de descarga |
-| Matías Malo Medrano | 1147831 | Estrategia: `greeks.py`, `strategy.py`, `backtest.py`, `metrics.py`, `report.py` |
-| Mauro Natalucci | — | Tutor — Licenciatura en Finanzas, UADE |
+| Rol | Responsabilidad |
+|---|---|
+| Estudiante 1 — Datos | Capa de datos: `data_loader.py`, `data_audit.py`, `fx.py`, scripts de descarga |
+| Estudiante 2 — Estrategia | Estrategia: `greeks.py`, `strategy.py`, `backtest.py`, `metrics.py`, `report.py` |
+| Tutor académico | Dirección académica — Licenciatura en Finanzas (2026) |

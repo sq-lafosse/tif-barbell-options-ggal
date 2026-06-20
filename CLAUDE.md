@@ -8,9 +8,9 @@
 ## 1. Identidad del proyecto
 
 **Repositorio:** `tif-barbell-options-ggal`
-**Tipo:** Trabajo de Investigación Final (TIF) — Licenciatura en Finanzas, UADE
-**Autores:** Santiago Quintero (LU 1176122) · Matías Malo Medrano (LU 1147831)
-**Tutor:** Mauro Natalucci
+**Tipo:** Trabajo de Investigación Final (TIF) — Licenciatura en Finanzas, universidad
+**Autores:** Estudiante 1 · Estudiante 2
+**Tutor:** Tutor académico
 **Año académico:** 2025–2026 (1C 2026)
 
 **Tesis:** *Mitigación del Riesgo de Cola Izquierda en el Equity Argentino: Un Enfoque Bimodal mediante la Estrategia Barbell y Derivados de ADRs (2015–2025).*
@@ -25,8 +25,8 @@
 
 | Persona | Responsabilidad | Módulos |
 |---|---|---|
-| **Santiago (datos)** | Construir la capa de datos limpia y reproducible | `data_loader.py`, `data_audit.py`, `fx.py`, descarga de benchmarks |
-| **Matías (estrategia)** | Implementar lógica cuantitativa y motor de simulación | `greeks.py`, `strategy.py`, `backtest.py`, `metrics.py`, `report.py` |
+| **Estudiante 1 (datos)** | Construir la capa de datos limpia y reproducible | `data_loader.py`, `data_audit.py`, `fx.py`, descarga de benchmarks |
+| **Estudiante 2 (estrategia)** | Implementar lógica cuantitativa y motor de simulación | `greeks.py`, `strategy.py`, `backtest.py`, `metrics.py`, `report.py` |
 
 Trabajamos con **ramas de Git separadas** (`feature/data-*` y `feature/strategy-*`) y mergeamos a `main` vía Pull Request.
 
@@ -45,7 +45,7 @@ La tesis sostiene que en el mercado argentino, dominado por *azar salvaje* (Mand
 
 ## 4. Decisiones metodológicas cerradas con el tutor
 
-> Estas decisiones surgieron de la devolución del Prof. Natalucci sobre la 2da entrega (40%). **No cambiar sin discutirlas con él.**
+> Estas decisiones surgieron de la devolución del tutor académico sobre la 2da entrega (40%). **No cambiar sin discutirlas con él.**
 
 | # | Decisión | Razón |
 |---|---|---|
@@ -93,7 +93,7 @@ Las 20 columnas de A + **DELTA, GAMMA, VEGA, THETA** (griegas pre-calculadas por
 
 **Política adoptada:** Recalcular DELTA, GAMMA, VEGA, THETA **únicamente** para los 10 archivos del esquema A, usando `greeks.py` con la `VI %` del propio archivo como input. Para los 7 archivos del esquema B, **confiamos en las griegas tal como vienen** (la fuente las publica).
 
-**Protocolo de calibración** (importante para Matías cuando programe `greeks.py`):
+**Protocolo de calibración** (importante para Estudiante 2 cuando programe `greeks.py`):
 1. Implementar Black-Scholes estándar (con la convención que use la fuente — probablemente call/put europea, spot del subyacente local en ARS, TLR del archivo, días al vto del archivo).
 2. **Validación cruzada:** correr `greeks.py` sobre los archivos del **esquema B** y comparar columna por columna contra DELTA/GAMMA/VEGA/THETA del archivo. Si coinciden con tolerancia razonable (ej. < 1% de error relativo), la implementación está calibrada con la fuente.
 3. Una vez calibrado, aplicar `greeks.py` a los archivos del esquema A para llenar las 4 columnas faltantes.
@@ -315,7 +315,7 @@ Mantener `requirements.txt` versionado.
 - [x] Detección de dos esquemas (A: 20 cols sin griegas; B: 24 cols con griegas)
 - [x] Decisión sobre griegas: recalcular las del esquema A con `greeks.py` calibrado contra B
 
-### En curso (Santiago — datos)
+### En curso (Estudiante 1 — datos)
 - [ ] Subir los 17 archivos `GGAL_HIST_YYYY-MM.csv` a `data/raw/options/` (local, no al repo)
 - [ ] `data_loader.py` — parser unificado de ambos esquemas → tidy
 - [ ] `data_audit.py` — validaciones de esquema, paridad, consistencia
@@ -327,8 +327,8 @@ Mantener `requirements.txt` versionado.
 ### Pendiente (decisión metodológica)
 - [ ] Resolver fuente de opciones históricas 2015–2023 (Databento vs sintético vs reducir backtest)
 
-### Bloqueado (Matías — estrategia)
-- Empieza cuando Santiago entregue `data_loader.py` + `fx.py` funcionando sobre los 17 archivos.
+### Bloqueado (Estudiante 2 — estrategia)
+- Empieza cuando Estudiante 1 entregue `data_loader.py` + `fx.py` funcionando sobre los 17 archivos.
 - Primera tarea: `greeks.py` calibrado contra esquema B (ver protocolo en sección 5.3).
 
 ---
