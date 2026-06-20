@@ -25,7 +25,7 @@ Autores: Estudiante 1 y Estudiante 2
 ### Instalación paso a paso
 
 ```bash
-# 1. Clonar el repositorio
+# 1. Clonar el repositorio (los datos crudos ya vienen incluidos)
 git clone https://github.com/<usuario>/tif-barbell-options-ggal.git
 cd tif-barbell-options-ggal
 
@@ -38,13 +38,13 @@ source venv/bin/activate
 
 # 3. Instalar dependencias
 pip install -r requirements.txt
-
-# 4. Poblar los datos (ver data/README.md para instrucciones detalladas)
-python scripts/download_adr.py
-python scripts/download_tbills.py
-python scripts/download_merval.py
-# Copiar manualmente las planillas de opciones a data/raw/options/
 ```
+
+Los archivos de datos (CSVs de opciones y parquets) están versionados en el repo.
+No se requiere ninguna descarga manual. Ver [data/README.md](data/README.md) para
+el detalle de cada fuente y cómo regenerar los derivados desde cero.
+
+> Los datos crudos de opciones son de acceso público.
 
 ---
 
@@ -61,14 +61,14 @@ tif-barbell-options-ggal/
 ├── main.py                     ← punto de entrada del backtest
 │
 ├── data/
-│   ├── raw/                    ← CSVs originales sin tocar (no versionados)
-│   │   ├── options/            ← planillas de opciones GGAL por Opex
-│   │   ├── adr/                ← histórico ADR GGAL
-│   │   ├── merval/             ← histórico Merval en ARS
-│   │   ├── ccl/                ← histórico CCL
-│   │   └── tbills/             ← histórico T-Bills 3M (FRED)
-│   ├── processed/              ← outputs de data_loader en .parquet (no versionados)
-│   └── README.md               ← cómo poblar cada carpeta
+│   ├── raw/                    ← datos crudos (versionados)
+│   │   ├── options/            ← 17 CSV Historial GGAL por Opex + sintético .parquet
+│   │   ├── adr/                ← histórico ADR GGAL (.parquet)
+│   │   ├── merval/             ← histórico Merval en ARS (.parquet)
+│   │   ├── ccl/                ← histórico CCL (.parquet)
+│   │   └── tbills/             ← histórico T-Bills 3M (.parquet)
+│   ├── processed/              ← outputs del pipeline en .parquet (versionados)
+│   └── README.md               ← detalle de fuentes y cómo regenerar
 │
 ├── src/                        ← módulos del pipeline
 │   ├── data_loader.py          ← parsea planillas wide → formato tidy
