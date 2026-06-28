@@ -21,10 +21,11 @@ portfolio:
 # --- MONEYNESS: SELECCIÓN DEL STRIKE OTM ---
 # Usamos distancia porcentual fija al spot (Decisión metodológica #8 — tutor Natalucci).
 # Ventaja: observable directo, no depende de Black-Scholes ni de VI implícita.
+# El polo agresivo compra únicamente Puts OTM (protección de cola, no apuesta direccional
+# con Calls) — decisión cerrada en sesión de trabajo, ver src/strategy.py.
 # ⚠ PLACEHOLDER — definir el % definitivo con el tutor antes de correr el backtest.
 moneyness:
-  otm_pct: 0.15   # PLACEHOLDER: strike OTM = spot × (1 + otm_pct) para CALL
-                  #                           = spot × (1 − otm_pct) para PUT
+  otm_pct: 0.15   # PLACEHOLDER: strike del Put = spot × (1 − otm_pct)
 
 
 # --- COSTOS DE TRANSACCIÓN ---
@@ -49,26 +50,27 @@ data:
   processed_dir:   data/processed/       # outputs de data_loader en formato tidy (.parquet)
 
 
-# --- ARCHIVOS OPEX ESPERADOS ---
-# Planillas CSV por vencimiento, en meses pares, desde octubre 2023.
+# --- ARCHIVOS HISTORIAL ESPERADOS ---
+# Planillas CSV por ciclo Opex, en meses pares, desde octubre 2023.
 # Agregar nuevas entradas a medida que se sumen planillas al repositorio.
 expected_opex_files:
-  - GGAL_OPEX_2023-10.csv
-  - GGAL_OPEX_2023-12.csv
-  - GGAL_OPEX_2024-02.csv
-  - GGAL_OPEX_2024-04.csv
-  - GGAL_OPEX_2024-06.csv
-  - GGAL_OPEX_2024-08.csv
-  - GGAL_OPEX_2024-10.csv
-  - GGAL_OPEX_2024-12.csv
-  - GGAL_OPEX_2025-02.csv
-  - GGAL_OPEX_2025-04.csv
-  - GGAL_OPEX_2025-06.csv
-  - GGAL_OPEX_2025-08.csv
-  - GGAL_OPEX_2025-10.csv
-  - GGAL_OPEX_2025-12.csv
-  - GGAL_OPEX_2026-02.csv
-  - GGAL_OPEX_2026-04.csv
+  - GGAL_HIST_2023-10.csv
+  - GGAL_HIST_2023-12.csv
+  - GGAL_HIST_2024-02.csv
+  - GGAL_HIST_2024-04.csv
+  - GGAL_HIST_2024-06.csv
+  - GGAL_HIST_2024-08.csv
+  - GGAL_HIST_2024-10.csv
+  - GGAL_HIST_2024-12.csv
+  - GGAL_HIST_2025-02.csv
+  - GGAL_HIST_2025-04.csv
+  - GGAL_HIST_2025-06.csv
+  - GGAL_HIST_2025-08.csv
+  - GGAL_HIST_2025-10.csv
+  - GGAL_HIST_2025-12.csv
+  - GGAL_HIST_2026-02.csv
+  - GGAL_HIST_2026-04.csv
+  - GGAL_HIST_2026-06.csv
 
 
 # --- BENCHMARKS ---
@@ -87,11 +89,33 @@ benchmarks:
 
 
 # --- FECHAS DEL BACKTEST ---
-# Rango temporal completo del estudio (2015-2025 histórico + 2026 prospectivo).
-# Nota: opciones reales disponibles desde oct 2023.
-#       Para 2015-2022 se usará una fuente externa o sintéticos (pendiente — ver CLAUDE.md §5.3).
+# Rango cubierto por options_full_usd.parquet: sintético (2019-2023) + real (2023-2026).
+# Decisión cerrada con el tutor (CLAUDE.md §5.5): el backtest arranca en 2019, no en 2015,
+# para incluir PASO 2019 y acotar el horizonte de reconstrucción sintética a ~5 años.
+# end_date es la última fecha común a todas las fuentes (opciones reales hasta 2026-06-12;
+# ADR/CCL/Merval/T-Bills llegan un poco más lejos pero no aportan opciones más allá de esa fecha).
 backtest:
-  start_date: "2015-01-01"
-  end_date:   "2026-12-31"
-  rebalance_frequency: "monthly"   # rebalanceo en cada vencimiento Opex (meses pares)
+  start_date: "2019-01-01"
+  end_date:   "2026-06-12"
   currency: "USD"                  # todos los resultados se reportan en USD
+
+
+# --- MODELOS DE CAPITALIZACIÓN DEL POLO AGRESIVO (backtest.py) ---
+# Tres reglas alternativas para fondear cada ciclo de puts, a comparar antes de
+# fijar una para la tesis (ver discusión metodológica con el tutor):
+#   · interest_only: presupuesto = interés devengado del T-Bill ese ciclo (principal intacto)
+#   · fixed_ratio:    presupuesto = portfolio.aggressive_weight × capital total corriente
+#   · hybrid:         presupuesto = max(interés, min_position_pct × capital total)
+capital_models:
+  initial_capital: 100000.0
+  min_position_pct: 0.012   # piso del modelo "hybrid", como % del NAV total por ciclo
+
+
+# --- REBALANCEO (event-driven, no calendario fijo) ---
+# El polo agresivo compra un Put OTM nuevo apenas vence el anterior (ver src/strategy.py).
+# La fuente de verdad es `dias_vto` de cada fila, no la etiqueta `opex` del archivo (que
+# identifica el ciclo del archivo, no el vencimiento exacto de cada contrato individual).
+rebalance:
+  min_dias_vto: 15        # piso de días al vencimiento para entrar a un contrato
+  max_gap_dias: 5         # máximo de días hacia adelante para buscar dato si falta la fecha exacta
+  esquema_priority: ["A", "B", "SIN"]   # preferir datos reales sobre el sintético en el overlap

@@ -17,6 +17,11 @@ Decisiones de diseño:
      al motor del backtest (``strategy.py``).
   4. El filtro de liquidez (CLAUDE.md §4, decisión 10) no se aplica acá; queda para
      ``strategy.py``, que opera sobre el dataset ya convertido.
+  5. ``pct_otm`` del dataset real se calcula contra ``ggal_local_usd`` (el subyacente
+     local convertido vía CCL), no contra el ADR — coherente con la Decisión
+     metodológica #1 (CLAUDE.md §4): el subyacente de la estrategia es la opción
+     local de GGAL, no un derivado sintético sobre el ADR. El ADR se agrega como
+     columna ``ggal_adr_usd`` aparte, solo para cross-check/benchmark (CLAUDE.md §5.4a).
 """
 
 import argparse
@@ -34,6 +39,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 DEFAULT_CCL_PATH       = Path("data/raw/ccl/CCL_daily.parquet")
+DEFAULT_ADR_PATH       = Path("data/raw/adr/GGAL_ADR_daily.parquet")
 DEFAULT_TIDY_PATH      = Path("data/processed/options_tidy.parquet")
 DEFAULT_SYNTHETIC_PATH = Path("data/raw/options/SYNTHETIC_2019_2023.parquet")
 DEFAULT_OUTPUT_PATH    = Path("data/processed/options_full_usd.parquet")
@@ -100,22 +106,66 @@ def load_ccl(ccl_path: Path = DEFAULT_CCL_PATH) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Carga del ADR (solo para cross-check / benchmark, no para pricing)
+# ---------------------------------------------------------------------------
+
+def load_adr(adr_path: Path = DEFAULT_ADR_PATH) -> pd.DataFrame:
+    """Lee el Parquet del ADR y devuelve fecha y cierre en USD, ordenado por fecha.
+
+    Args:
+        adr_path: path al Parquet producido por ``scripts/download_adr.py``.
+            Se esperan al menos las columnas ``fecha`` y ``close``.
+
+    Returns:
+        DataFrame con columnas ``fecha`` (datetime sin timezone) y ``ggal_adr_usd``
+        (float), ordenado por fecha ascendente con índice reseteado.
+
+    Raises:
+        FileNotFoundError: si el archivo no existe.
+    """
+    adr_path = Path(adr_path)
+    if not adr_path.exists():
+        raise FileNotFoundError(
+            f"No se encontró el ADR en '{adr_path}'. "
+            "Correr primero `python scripts/download_adr.py`."
+        )
+
+    raw = pd.read_parquet(adr_path)[["fecha", "close"]].rename(
+        columns={"close": "ggal_adr_usd"}
+    )
+    raw["fecha"] = pd.to_datetime(raw["fecha"])
+    if raw["fecha"].dt.tz is not None:
+        raw["fecha"] = raw["fecha"].dt.tz_convert(None)
+
+    raw = raw.sort_values("fecha").reset_index(drop=True)
+    logger.info(
+        "ADR cargado: %d filas — %s → %s",
+        len(raw), raw["fecha"].min().date(), raw["fecha"].max().date(),
+    )
+    return raw
+
+
+# ---------------------------------------------------------------------------
 # Conversión del dataset real (ARS → USD)
 # ---------------------------------------------------------------------------
 
 def convert_options_to_usd(
     df_tidy: pd.DataFrame,
     ccl_path: Path = DEFAULT_CCL_PATH,
+    adr_path: Path = DEFAULT_ADR_PATH,
     ffill_limit: int | None = None,
 ) -> pd.DataFrame:
     """Convierte un DataFrame tidy de opciones (ARS) a USD vía CCL.
 
     Aplica forward-fill al CCL para fechas donde el dataset tiene cotización pero
-    no hay CCL observado (ej. feriado en NYSE con BYMA abierto).
+    no hay CCL observado (ej. feriado en NYSE con BYMA abierto). También calcula
+    ``pct_otm`` contra el subyacente local (Decisión metodológica #1) y agrega el
+    ADR como columna de cross-check/benchmark.
 
     Args:
         df_tidy:     output de ``data_loader.load_historical_options``.
         ccl_path:    path al Parquet del CCL.
+        adr_path:    path al Parquet del ADR (solo para cross-check, no pricing).
         ffill_limit: máximo de días consecutivos de forward-fill. None = sin límite.
             Loggea warning si algún run supera ``FFILL_WARN_DAYS`` días.
 
@@ -126,6 +176,10 @@ def convert_options_to_usd(
             - ``prima_usd``:      prima / ccl_aplicado.
             - ``ggal_local_usd``: ggal_local / ccl_aplicado.
             - ``ccl_ffilled``:    True si el CCL fue rellenado por forward-fill.
+            - ``pct_otm``:        distancia porcentual strike vs. ggal_local_usd,
+                positiva si la opción está OTM (Call: strike > spot; Put: strike < spot).
+            - ``ggal_adr_usd``:   cierre del ADR en USD esa fecha (forward-filled),
+                solo de referencia — no se usa para pricing ni moneyness.
     """
     ccl_df = load_ccl(ccl_path)
 
@@ -169,6 +223,17 @@ def convert_options_to_usd(
     df_out["strike_usd"]     = df_out["strike"]     / df_out["ccl_aplicado"]
     df_out["prima_usd"]      = df_out["prima"]       / df_out["ccl_aplicado"]
     df_out["ggal_local_usd"] = df_out["ggal_local"]  / df_out["ccl_aplicado"]
+
+    is_call = df_out["tipo"] == "Call"
+    moneyness_ratio = df_out["strike_usd"] / df_out["ggal_local_usd"]
+    df_out["pct_otm"] = np.where(is_call, moneyness_ratio - 1.0, 1.0 - moneyness_ratio)
+
+    adr_df = load_adr(adr_path)
+    adr_lookup = adr_df.set_index("fecha")["ggal_adr_usd"].reindex(all_dates).ffill(limit=ffill_limit)
+    df_out = df_out.merge(
+        pd.DataFrame({"fecha": all_dates, "ggal_adr_usd": adr_lookup.values}),
+        on="fecha", how="left",
+    )
 
     n_ffilled  = int(df_out["ccl_ffilled"].sum())
     n_observed = int((~df_out["ccl_ffilled"]).sum())
@@ -325,6 +390,11 @@ def _parse_args() -> argparse.Namespace:
         help=f"Path al Parquet del CCL (default: {DEFAULT_CCL_PATH}).",
     )
     parser.add_argument(
+        "--adr-path",
+        default=str(DEFAULT_ADR_PATH),
+        help=f"Path al Parquet del ADR (default: {DEFAULT_ADR_PATH}).",
+    )
+    parser.add_argument(
         "--output",
         default=str(DEFAULT_OUTPUT_PATH),
         help=f"Path de salida del Parquet final (default: {DEFAULT_OUTPUT_PATH}).",
@@ -375,7 +445,9 @@ def main() -> int:
         df_tidy = pd.read_parquet(tidy_path)
         logger.info("Tidy cargado: %d filas.", len(df_tidy))
 
-        df_real_usd = convert_options_to_usd(df_tidy, ccl_path=Path(args.ccl_path))
+        df_real_usd = convert_options_to_usd(
+            df_tidy, ccl_path=Path(args.ccl_path), adr_path=Path(args.adr_path)
+        )
 
         if args.no_synthetic:
             df_final = df_real_usd
